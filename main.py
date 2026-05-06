@@ -95,7 +95,8 @@ Max 120 words.
 
 def safe_screenshot(page, path):
     try:
-        page.screenshot(path=path, full_page=True, timeout=15000)
+        # full_page=False lebih aman untuk LinkedIn karena full page sering timeout
+        page.screenshot(path=path, full_page=False, timeout=10000)
         print(f"Screenshot saved: {path}", flush=True)
     except Exception as error:
         print(f"Screenshot failed ({path}): {error}", flush=True)
@@ -156,11 +157,10 @@ def post_to_linkedin(content):
             except Exception as error:
                 print(f"Feed load warning: {error}", flush=True)
 
-            page.wait_for_timeout(12000)
+            page.wait_for_timeout(10000)
 
             print("Current URL:", page.url, flush=True)
             print("Page title:", page.title(), flush=True)
-            print("Feed loaded. Continue searching start post button...", flush=True)
 
             safe_screenshot(page, "debug_feed.png")
 
@@ -171,48 +171,30 @@ def post_to_linkedin(content):
                     "Buat ulang linkedin_state.json lewat save_session.py, lalu update secret LINKEDIN_STORAGE_STATE."
                 )
 
-            print("Searching start post button...", flush=True)
+            print("Opening LinkedIn composer directly...", flush=True)
 
-            start_post_selectors = [
-                'button:has-text("Start a post")',
-                'button:has-text("Mulai posting")',
-                'button:has-text("Buat postingan")',
-                'button.share-box-feed-entry__trigger',
-                '[data-control-name="share.sharebox_focus"]',
-                'button[aria-label*="Start a post"]',
-                'button[aria-label*="Mulai posting"]',
-                'button[aria-label*="Buat postingan"]',
-                'button[aria-label*="Create a post"]',
-                'button[aria-label*="Buat posting"]',
-            ]
-
-            start_post = None
-
-            for selector in start_post_selectors:
-                locator = page.locator(selector).first
-
-                try:
-                    count = locator.count()
-
-                    if count > 0 and locator.is_visible(timeout=5000):
-                        start_post = locator
-                        print(f"Start post button found using selector: {selector}", flush=True)
-                        break
-
-                except Exception as error:
-                    print(f"Start post selector failed: {selector} | {error}", flush=True)
-
-            if start_post is None:
-                safe_screenshot(page, "debug_start_post_not_found.png")
-                raise RuntimeError(
-                    f"Start post button not found. Current URL: {page.url}, title: {page.title()}"
+            try:
+                page.goto(
+                    "https://www.linkedin.com/feed/?shareActive=true",
+                    wait_until="domcontentloaded",
+                    timeout=60000,
                 )
+            except Exception as error:
+                print(f"Composer direct load warning: {error}", flush=True)
 
-            print("Opening post modal...", flush=True)
-            start_post.click(force=True)
-            page.wait_for_timeout(6000)
+            page.wait_for_timeout(10000)
+
+            print("Composer URL:", page.url, flush=True)
+            print("Composer title:", page.title(), flush=True)
 
             safe_screenshot(page, "debug_post_modal.png")
+
+            if "login" in page.url or "checkpoint" in page.url or "challenge" in page.url:
+                safe_screenshot(page, "debug_composer_session_invalid.png")
+                raise RuntimeError(
+                    "LinkedIn session tidak valid saat membuka composer. "
+                    "Buat ulang linkedin_state.json lewat save_session.py."
+                )
 
             print("Searching editor textbox...", flush=True)
 
@@ -220,8 +202,9 @@ def post_to_linkedin(content):
                 'div[role="textbox"]',
                 '.ql-editor',
                 'div[contenteditable="true"]',
-                'div.share-creation-state__text-editor div[role="textbox"]',
                 'div[data-test-ql-editor-contenteditable="true"]',
+                '.share-creation-state__text-editor div[contenteditable="true"]',
+                '.share-creation-state__text-editor div[role="textbox"]',
             ]
 
             editor = None
@@ -242,14 +225,15 @@ def post_to_linkedin(content):
 
             if editor is None:
                 safe_screenshot(page, "debug_editor_not_found.png")
-                raise RuntimeError("Post editor textbox not found.")
+                raise RuntimeError(
+                    f"Post editor textbox not found. Current URL: {page.url}, title: {page.title()}"
+                )
 
             print("Filling post content...", flush=True)
 
             editor.click(force=True)
             page.wait_for_timeout(1000)
 
-            # Lebih stabil untuk contenteditable editor LinkedIn
             page.keyboard.insert_text(content)
             page.wait_for_timeout(4000)
 
@@ -304,6 +288,7 @@ def post_to_linkedin(content):
                 raise RuntimeError("Post submit button not found or still disabled.")
 
             print("Publishing post...", flush=True)
+
             submit_button.click(force=True)
             page.wait_for_timeout(12000)
 
