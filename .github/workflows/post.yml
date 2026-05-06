@@ -29,6 +29,7 @@ jobs:
           LINKEDIN_EMAIL: ${{ secrets.LINKEDIN_EMAIL }}
           LINKEDIN_PASSWORD: ${{ secrets.LINKEDIN_PASSWORD }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          LINKEDIN_STORAGE_STATE: ${{ secrets.LINKEDIN_STORAGE_STATE }}
         run: python main.py
 
       - name: Upload debug screenshots
