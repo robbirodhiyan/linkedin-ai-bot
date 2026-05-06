@@ -93,6 +93,14 @@ Max 120 words.
         return random.choice(fallback_posts)
 
 
+def safe_screenshot(page, path):
+    try:
+        page.screenshot(path=path, full_page=True, timeout=15000)
+        print(f"Screenshot saved: {path}", flush=True)
+    except Exception as error:
+        print(f"Screenshot failed ({path}): {error}", flush=True)
+
+
 def post_to_linkedin(content):
     storage_state_json = os.getenv("LINKEDIN_STORAGE_STATE")
 
@@ -152,11 +160,12 @@ def post_to_linkedin(content):
 
             print("Current URL:", page.url, flush=True)
             print("Page title:", page.title(), flush=True)
+            print("Feed loaded. Continue searching start post button...", flush=True)
 
-            page.screenshot(path="debug_feed.png", full_page=True)
+            safe_screenshot(page, "debug_feed.png")
 
             if "login" in page.url or "checkpoint" in page.url or "challenge" in page.url:
-                page.screenshot(path="debug_session_invalid.png", full_page=True)
+                safe_screenshot(page, "debug_session_invalid.png")
                 raise RuntimeError(
                     "LinkedIn session tidak valid / expired / kena checkpoint. "
                     "Buat ulang linkedin_state.json lewat save_session.py, lalu update secret LINKEDIN_STORAGE_STATE."
@@ -173,31 +182,37 @@ def post_to_linkedin(content):
                 'button[aria-label*="Start a post"]',
                 'button[aria-label*="Mulai posting"]',
                 'button[aria-label*="Buat postingan"]',
+                'button[aria-label*="Create a post"]',
+                'button[aria-label*="Buat posting"]',
             ]
 
             start_post = None
 
             for selector in start_post_selectors:
                 locator = page.locator(selector).first
+
                 try:
-                    if locator.count() > 0 and locator.is_visible(timeout=5000):
+                    count = locator.count()
+
+                    if count > 0 and locator.is_visible(timeout=5000):
                         start_post = locator
                         print(f"Start post button found using selector: {selector}", flush=True)
                         break
-                except Exception:
-                    pass
+
+                except Exception as error:
+                    print(f"Start post selector failed: {selector} | {error}", flush=True)
 
             if start_post is None:
-                page.screenshot(path="debug_start_post_not_found.png", full_page=True)
+                safe_screenshot(page, "debug_start_post_not_found.png")
                 raise RuntimeError(
                     f"Start post button not found. Current URL: {page.url}, title: {page.title()}"
                 )
 
             print("Opening post modal...", flush=True)
             start_post.click(force=True)
-            page.wait_for_timeout(5000)
+            page.wait_for_timeout(6000)
 
-            page.screenshot(path="debug_post_modal.png", full_page=True)
+            safe_screenshot(page, "debug_post_modal.png")
 
             print("Searching editor textbox...", flush=True)
 
@@ -206,32 +221,39 @@ def post_to_linkedin(content):
                 '.ql-editor',
                 'div[contenteditable="true"]',
                 'div.share-creation-state__text-editor div[role="textbox"]',
+                'div[data-test-ql-editor-contenteditable="true"]',
             ]
 
             editor = None
 
             for selector in editor_selectors:
                 locator = page.locator(selector).first
+
                 try:
-                    if locator.count() > 0 and locator.is_visible(timeout=5000):
+                    count = locator.count()
+
+                    if count > 0 and locator.is_visible(timeout=5000):
                         editor = locator
                         print(f"Editor found using selector: {selector}", flush=True)
                         break
-                except Exception:
-                    pass
+
+                except Exception as error:
+                    print(f"Editor selector failed: {selector} | {error}", flush=True)
 
             if editor is None:
-                page.screenshot(path="debug_editor_not_found.png", full_page=True)
+                safe_screenshot(page, "debug_editor_not_found.png")
                 raise RuntimeError("Post editor textbox not found.")
 
             print("Filling post content...", flush=True)
+
             editor.click(force=True)
             page.wait_for_timeout(1000)
 
+            # Lebih stabil untuk contenteditable editor LinkedIn
             page.keyboard.insert_text(content)
-            page.wait_for_timeout(3000)
+            page.wait_for_timeout(4000)
 
-            page.screenshot(path="debug_content_filled.png", full_page=True)
+            safe_screenshot(page, "debug_content_filled.png")
 
             print("Searching publish button...", flush=True)
 
@@ -243,12 +265,14 @@ def post_to_linkedin(content):
                 'button[aria-label*="Posting"]',
                 'button[aria-label*="Kirim"]',
                 '.share-actions__primary-action button',
+                'button.share-actions__primary-action',
             ]
 
             submit_button = None
 
             for selector in post_button_selectors:
                 locators = page.locator(selector)
+
                 try:
                     count = locators.count()
 
@@ -256,29 +280,34 @@ def post_to_linkedin(content):
                         for i in range(count):
                             button = locators.nth(i)
 
-                            if button.is_visible(timeout=3000):
-                                disabled = button.get_attribute("disabled")
-                                aria_disabled = button.get_attribute("aria-disabled")
+                            try:
+                                if button.is_visible(timeout=3000):
+                                    disabled = button.get_attribute("disabled")
+                                    aria_disabled = button.get_attribute("aria-disabled")
 
-                                if disabled is None and aria_disabled != "true":
-                                    submit_button = button
-                                    print(f"Publish button found using selector: {selector}", flush=True)
-                                    break
+                                    if disabled is None and aria_disabled != "true":
+                                        submit_button = button
+                                        print(f"Publish button found using selector: {selector}", flush=True)
+                                        break
+
+                            except Exception as inner_error:
+                                print(f"Publish button item failed: {selector} index {i} | {inner_error}", flush=True)
 
                     if submit_button is not None:
                         break
-                except Exception:
-                    pass
+
+                except Exception as error:
+                    print(f"Publish selector failed: {selector} | {error}", flush=True)
 
             if submit_button is None:
-                page.screenshot(path="debug_post_button_not_found.png", full_page=True)
+                safe_screenshot(page, "debug_post_button_not_found.png")
                 raise RuntimeError("Post submit button not found or still disabled.")
 
             print("Publishing post...", flush=True)
             submit_button.click(force=True)
-            page.wait_for_timeout(10000)
+            page.wait_for_timeout(12000)
 
-            page.screenshot(path="debug_after_post.png", full_page=True)
+            safe_screenshot(page, "debug_after_post.png")
 
             print("Post process finished. Check LinkedIn profile/feed.", flush=True)
 
