@@ -1,3 +1,98 @@
+import os
+import json
+import random
+from datetime import datetime
+from playwright.sync_api import sync_playwright
+from openai import OpenAI
+
+
+TOPICS = [
+    "Laravel Development",
+    "ERP Integration",
+    "SAP Automation",
+    "Business Process Digitalization",
+    "IT Leadership",
+    "Fullstack Engineering",
+    "Software Automation",
+    "Internal Dashboard Development",
+]
+
+
+def generate_ai_post():
+    api_key = os.getenv("OPENAI_API_KEY")
+
+    fallback_posts = [
+        """Automation is not about replacing people.
+
+It is about removing repetitive work so people can focus on decisions, improvement, and business impact.
+
+In many companies, the biggest productivity gap is not the lack of people.
+It is too many manual processes that should have been automated years ago.
+
+#Automation #DigitalTransformation #ITLeadership #SoftwareEngineering""",
+
+        """A good internal system is not only about features.
+
+It must be fast, stable, easy to maintain, and aligned with real business processes.
+
+That is why understanding users, database structure, and operational flow is as important as writing code.
+
+#Laravel #ERP #FullstackDevelopment #BusinessProcess""",
+
+        """ERP integration is not just sending data from one system to another.
+
+The real challenge is data validation, error handling, retry logic, logging, and making sure business users can trust the result.
+
+Reliable integration is built from small details.
+
+#ERPIntegration #SAP #BackendDevelopment #Automation""",
+    ]
+
+    if not api_key:
+        print("OPENAI_API_KEY not found. Using fallback post.", flush=True)
+        return random.choice(fallback_posts)
+
+    try:
+        client = OpenAI(api_key=api_key)
+
+        topic = random.choice(TOPICS)
+
+        prompt = f"""
+Write one professional LinkedIn post in English for an experienced IT Development Lead.
+
+Topic: {topic}
+
+Style:
+- insightful
+- practical
+- authority-building
+- not salesy
+- natural human tone
+
+Structure:
+- strong hook
+- short practical insight
+- simple closing sentence
+- 3 to 5 relevant hashtags
+
+Max 120 words.
+"""
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.9,
+        )
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as error:
+        print(f"OpenAI failed, using fallback post. Error: {error}", flush=True)
+        return random.choice(fallback_posts)
+
+
 def post_to_linkedin(content):
     storage_state_json = os.getenv("LINKEDIN_STORAGE_STATE")
 
@@ -133,7 +228,6 @@ def post_to_linkedin(content):
             editor.click(force=True)
             page.wait_for_timeout(1000)
 
-            # Lebih stabil daripada fill() untuk editor contenteditable LinkedIn
             page.keyboard.insert_text(content)
             page.wait_for_timeout(3000)
 
@@ -157,15 +251,17 @@ def post_to_linkedin(content):
                 locators = page.locator(selector)
                 try:
                     count = locators.count()
+
                     if count > 0:
                         for i in range(count):
-                            btn = locators.nth(i)
-                            if btn.is_visible(timeout=3000):
-                                disabled = btn.get_attribute("disabled")
-                                aria_disabled = btn.get_attribute("aria-disabled")
+                            button = locators.nth(i)
+
+                            if button.is_visible(timeout=3000):
+                                disabled = button.get_attribute("disabled")
+                                aria_disabled = button.get_attribute("aria-disabled")
 
                                 if disabled is None and aria_disabled != "true":
-                                    submit_button = btn
+                                    submit_button = button
                                     print(f"Publish button found using selector: {selector}", flush=True)
                                     break
 
@@ -188,3 +284,26 @@ def post_to_linkedin(content):
 
         finally:
             browser.close()
+
+
+def save_post_log(content):
+    with open("post_history.txt", "a", encoding="utf-8") as file:
+        file.write(f"\n[{datetime.now()}]\n")
+        file.write(content)
+        file.write("\n" + "=" * 80 + "\n")
+
+
+if __name__ == "__main__":
+    print("BOT STARTED", flush=True)
+
+    generated_content = generate_ai_post()
+
+    print("Generated LinkedIn post:", flush=True)
+    print(generated_content, flush=True)
+
+    save_post_log(generated_content)
+
+    print("Start posting to LinkedIn...", flush=True)
+    post_to_linkedin(generated_content)
+
+    print("Success posted at", datetime.now(), flush=True)
