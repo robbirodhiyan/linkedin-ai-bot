@@ -1,98 +1,3 @@
-import os
-import json
-import random
-from datetime import datetime
-from playwright.sync_api import sync_playwright
-from openai import OpenAI
-
-
-TOPICS = [
-    "Laravel Development",
-    "ERP Integration",
-    "SAP Automation",
-    "Business Process Digitalization",
-    "IT Leadership",
-    "Fullstack Engineering",
-    "Software Automation",
-    "Internal Dashboard Development",
-]
-
-
-def generate_ai_post():
-    api_key = os.getenv("OPENAI_API_KEY")
-
-    fallback_posts = [
-        """Automation is not about replacing people.
-
-It is about removing repetitive work so people can focus on decisions, improvement, and business impact.
-
-In many companies, the biggest productivity gap is not the lack of people.
-It is too many manual processes that should have been automated years ago.
-
-#Automation #DigitalTransformation #ITLeadership #SoftwareEngineering""",
-
-        """A good internal system is not only about features.
-
-It must be fast, stable, easy to maintain, and aligned with real business processes.
-
-That is why understanding users, database structure, and operational flow is as important as writing code.
-
-#Laravel #ERP #FullstackDevelopment #BusinessProcess""",
-
-        """ERP integration is not just sending data from one system to another.
-
-The real challenge is data validation, error handling, retry logic, logging, and making sure business users can trust the result.
-
-Reliable integration is built from small details.
-
-#ERPIntegration #SAP #BackendDevelopment #Automation""",
-    ]
-
-    if not api_key:
-        print("OPENAI_API_KEY not found. Using fallback post.")
-        return random.choice(fallback_posts)
-
-    try:
-        client = OpenAI(api_key=api_key)
-
-        topic = random.choice(TOPICS)
-
-        prompt = f"""
-Write one professional LinkedIn post in English for an experienced IT Development Lead.
-
-Topic: {topic}
-
-Style:
-- insightful
-- practical
-- authority-building
-- not salesy
-- natural human tone
-
-Structure:
-- strong hook
-- short practical insight
-- simple closing sentence
-- 3 to 5 relevant hashtags
-
-Max 120 words.
-"""
-
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.9,
-        )
-
-        return response.choices[0].message.content.strip()
-
-    except Exception as error:
-        print(f"OpenAI failed, using fallback post. Error: {error}")
-        return random.choice(fallback_posts)
-
-
 def post_to_linkedin(content):
     storage_state_json = os.getenv("LINKEDIN_STORAGE_STATE")
 
@@ -136,24 +41,25 @@ def post_to_linkedin(content):
 
         print("Opening LinkedIn feed using saved session...")
 
-try:
-    page.goto(
-        "https://www.linkedin.com/feed/",
-        wait_until="domcontentloaded",
-        timeout=60000
-    )
-except Exception as error:
-    print(f"Feed page load warning: {error}")
+        try:
+            page.goto(
+                "https://www.linkedin.com/feed/",
+                wait_until="domcontentloaded",
+                timeout=60000
+            )
+        except Exception as error:
+            print(f"Feed page load warning: {error}")
 
-page.wait_for_timeout(10000)
+        page.wait_for_timeout(10000)
 
-print("Current URL:", page.url)
-print("Page title:", page.title())
+        print("Current URL:", page.url)
+        print("Page title:", page.title())
 
-page.screenshot(path="debug_feed.png", full_page=True)
+        page.screenshot(path="debug_feed.png", full_page=True)
 
         if "login" in page.url or "checkpoint" in page.url or "challenge" in page.url:
             page.screenshot(path="debug_session_invalid.png", full_page=True)
+            browser.close()
             raise RuntimeError(
                 "LinkedIn session tidak valid / expired / kena checkpoint. "
                 "Buat ulang linkedin_state.json lewat save_session.py, lalu update secret LINKEDIN_STORAGE_STATE."
@@ -167,6 +73,7 @@ page.screenshot(path="debug_feed.png", full_page=True)
 
         if start_post.count() == 0:
             page.screenshot(path="debug_start_post_not_found.png", full_page=True)
+            browser.close()
             raise RuntimeError(
                 f"Start post button not found. Current URL: {page.url}, title: {page.title()}"
             )
@@ -181,6 +88,7 @@ page.screenshot(path="debug_feed.png", full_page=True)
 
         if editor.count() == 0:
             page.screenshot(path="debug_editor_not_found.png", full_page=True)
+            browser.close()
             raise RuntimeError("Post editor textbox not found.")
 
         print("Filling post content...")
@@ -195,6 +103,7 @@ page.screenshot(path="debug_feed.png", full_page=True)
 
         if submit_button.count() == 0:
             page.screenshot(path="debug_post_button_not_found.png", full_page=True)
+            browser.close()
             raise RuntimeError("Post submit button not found.")
 
         print("Publishing post...")
@@ -204,22 +113,3 @@ page.screenshot(path="debug_feed.png", full_page=True)
         page.screenshot(path="debug_after_post.png", full_page=True)
 
         browser.close()
-
-
-def save_post_log(content):
-    with open("post_history.txt", "a", encoding="utf-8") as file:
-        file.write(f"\n[{datetime.now()}]\n")
-        file.write(content)
-        file.write("\n" + "=" * 80 + "\n")
-
-
-if __name__ == "__main__":
-    generated_content = generate_ai_post()
-
-    print("Generated LinkedIn post:")
-    print(generated_content)
-
-    save_post_log(generated_content)
-    post_to_linkedin(generated_content)
-
-    print("Success posted at", datetime.now())
