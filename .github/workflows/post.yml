@@ -24,9 +24,17 @@ jobs:
           python -m pip install -r requirements.txt
           python -m playwright install chromium
 
-      - name: Run Bot
+            - name: Run Bot
         env:
           LINKEDIN_EMAIL: ${{ secrets.LINKEDIN_EMAIL }}
           LINKEDIN_PASSWORD: ${{ secrets.LINKEDIN_PASSWORD }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python main.py
+
+      - name: Upload debug screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linkedin-debug-screenshots
+          path: |
+            debug_*.png

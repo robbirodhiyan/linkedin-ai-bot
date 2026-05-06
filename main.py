@@ -141,7 +141,14 @@ def post_to_linkedin(content):
         raise RuntimeError("LINKEDIN_PASSWORD is missing from GitHub Secrets.")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+            ],
+        )
 
         context = browser.new_context(
             viewport={"width": 1366, "height": 768},
@@ -150,43 +157,97 @@ def post_to_linkedin(content):
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/120.0.0.0 Safari/537.36"
             ),
+            locale="en-US",
         )
 
         page = context.new_page()
+        page.set_default_timeout(60000)
 
-        page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded")
-        page.fill('input[name="session_key"]', email)
-        page.fill('input[name="session_password"]', password)
-        page.click('button[type="submit"]')
-        page.wait_for_timeout(8000)
+        print("Opening LinkedIn login page...")
+        page.goto("https://www.linkedin.com/login", wait_until="networkidle", timeout=60000)
 
-        current_url = page.url
+        print("Current URL after open login:", page.url)
+        print("Page title:", page.title())
 
-        if "checkpoint" in current_url or "challenge" in current_url:
-            browser.close()
+        # Simpan screenshot untuk debugging kalau gagal
+        page.screenshot(path="debug_login_page.png", full_page=True)
+
+        # Kadang LinkedIn tampilkan halaman cookie/consent
+        try:
+            accept_button = page.locator(
+                'button:has-text("Accept"), button:has-text("Agree"), button:has-text("Allow")'
+            ).first
+            if accept_button.count() > 0:
+                accept_button.click(timeout=5000)
+                page.wait_for_timeout(2000)
+        except Exception as cookie_error:
+            print("No cookie button clicked:", cookie_error)
+
+        email_input = page.locator('input[name="session_key"], input#username, input[type="email"]').first
+        password_input = page.locator('input[name="session_password"], input#password, input[type="password"]').first
+
+        if email_input.count() == 0:
+            page.screenshot(path="debug_login_missing_email.png", full_page=True)
             raise RuntimeError(
-                "LinkedIn meminta verifikasi login/checkpoint. "
-                "Solusi berikutnya: pakai saved cookies/session."
+                f"LinkedIn email input not found. Current URL: {page.url}, title: {page.title()}"
             )
 
-        page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded")
-        page.wait_for_timeout(7000)
+        print("Filling email and password...")
+        email_input.fill(email)
+        password_input.fill(password)
 
-        post_button = page.locator('button:has-text("Start a post")').first
-        post_button.click()
-        page.wait_for_timeout(3000)
+        login_button = page.locator(
+            'button[type="submit"], button:has-text("Sign in"), button:has-text("Log in")'
+        ).first
+        login_button.click()
+
+        page.wait_for_timeout(10000)
+
+        print("Current URL after login:", page.url)
+        print("Page title after login:", page.title())
+        page.screenshot(path="debug_after_login.png", full_page=True)
+
+        if "checkpoint" in page.url or "challenge" in page.url:
+            raise RuntimeError(
+                "LinkedIn meminta verifikasi login/checkpoint. "
+                "Solusi berikutnya: gunakan saved cookies/session."
+            )
+
+        print("Opening feed...")
+        page.goto("https://www.linkedin.com/feed/", wait_until="networkidle", timeout=60000)
+        page.wait_for_timeout(7000)
+        page.screenshot(path="debug_feed.png", full_page=True)
+
+        start_post = page.locator(
+            'button:has-text("Start a post"), button:has-text("Mulai posting"), '
+            'button:has-text("Buat postingan")'
+        ).first
+
+        if start_post.count() == 0:
+            raise RuntimeError(
+                f"Start post button not found. Current URL: {page.url}, title: {page.title()}"
+            )
+
+        print("Opening post modal...")
+        start_post.click()
+        page.wait_for_timeout(4000)
 
         editor = page.locator('div[role="textbox"]').first
         editor.fill(content)
         page.wait_for_timeout(2000)
 
-        submit_button = page.locator('button:has-text("Post")').last
+        submit_button = page.locator(
+            'button:has-text("Post"), button:has-text("Posting"), button:has-text("Kirim")'
+        ).last
+
+        print("Publishing post...")
         submit_button.click()
         page.wait_for_timeout(5000)
 
+        page.screenshot(path="debug_after_post.png", full_page=True)
+
         browser.close()
-
-
+        
 def save_post_log(content):
     with open("post_history.txt", "a", encoding="utf-8") as file:
         file.write(f"\n[{datetime.now()}]\n")
