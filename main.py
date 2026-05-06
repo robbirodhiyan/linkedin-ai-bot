@@ -135,13 +135,22 @@ def post_to_linkedin(content):
         page.set_default_timeout(60000)
 
         print("Opening LinkedIn feed using saved session...")
-        page.goto("https://www.linkedin.com/feed/", wait_until="networkidle", timeout=60000)
-        page.wait_for_timeout(7000)
 
-        print("Current URL:", page.url)
-        print("Page title:", page.title())
+try:
+    page.goto(
+        "https://www.linkedin.com/feed/",
+        wait_until="domcontentloaded",
+        timeout=60000
+    )
+except Exception as error:
+    print(f"Feed page load warning: {error}")
 
-        page.screenshot(path="debug_feed.png", full_page=True)
+page.wait_for_timeout(10000)
+
+print("Current URL:", page.url)
+print("Page title:", page.title())
+
+page.screenshot(path="debug_feed.png", full_page=True)
 
         if "login" in page.url or "checkpoint" in page.url or "challenge" in page.url:
             page.screenshot(path="debug_session_invalid.png", full_page=True)
